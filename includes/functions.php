@@ -268,11 +268,14 @@ function getImageUrl($image, $default = null) {
 function paginate($total, $perPage, $currentPage, $baseUrl) {
     $totalPages = ceil($total / $perPage);
     if ($totalPages <= 1) return '';
-    
+
+    // Определяем разделитель: '?' если в URL нет query-параметров, иначе '&'
+    $sep = (strpos($baseUrl, '?') === false) ? '?' : '&';
+
     $html = '<nav class="pagination">';
     for ($i = 1; $i <= $totalPages; $i++) {
         $active = ($i == $currentPage) ? ' active' : '';
-        $html .= "<a href=\"{$baseUrl}?page={$i}\" class=\"page-btn{$active}\">{$i}</a>";
+        $html .= "<a href=\"{$baseUrl}{$sep}page={$i}\" class=\"page-btn{$active}\">{$i}</a>";
     }
     $html .= '</nav>';
     return $html;

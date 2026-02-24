@@ -1,5 +1,5 @@
 <?php
-require_once '../includes/functions.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 // Получаем ID кейса из URL
 $path = $_SERVER['REQUEST_URI'];

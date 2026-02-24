@@ -1,5 +1,5 @@
 <?php
-require_once '/includes/functions.php';
+require_once __DIR__ . '/includes/functions.php';
 $pageTitle = 'Главная';
 $pageDesc = 'UnionCase — открывай кейсы с товарами лучших маркетплейсов. Steam, Wildberries, OZON, AliExpress';
 

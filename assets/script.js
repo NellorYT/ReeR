@@ -283,185 +283,124 @@ function openCase(caseId) {
 // ===== АНИМАЦИЯ РУЛЕТКИ =====
 function startRouletteAnimation(items) {
     console.log('Starting animation with', items.length, 'items');
-    
+
     const track = document.getElementById('roulette-track');
     if (!track) {
         console.error('Roulette track not found!');
         return;
     }
-    
+
     isSpinning = true;
     spinPosition = 0;
-    spinDuration = 0;
-    spinSpeed = 40; // Начальная скорость
-    
-    track.innerHTML = '';
-    track.style.transition = 'none';
-    track.style.transform = 'translateX(0)';
-    
-    // Создаем много предметов для анимации
-    let itemsHtml = '';
-    for (let i = 0; i < 40; i++) {
-        items.forEach(item => {
-            itemsHtml += `
-                <div class="roulette-item" data-item-id="${item.id}" data-item-price="${item.price}">
-                    ${item.image ? `<img src="${getImageUrl(item.image)}" alt="${item.name}">` : '<i class="fas fa-gift"></i>'}
-                    <span>${item.name}</span>
-                </div>
-            `;
-        });
-    }
-    track.innerHTML = itemsHtml;
-    
-    console.log('Track filled with', track.children.length, 'items');
-    
-    // Запускаем анимацию
+
     if (spinInterval) {
         clearInterval(spinInterval);
+        spinInterval = null;
     }
-    
-    const startTime = Date.now();
-    
-    spinInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        
-        if (elapsed < SPIN_TIME) {
-            // Быстрое вращение
-            spinSpeed = 40;
-        } else if (elapsed < SPIN_TIME + SLOW_DOWN_TIME) {
-            // Замедление
-            const slowdown = (elapsed - SPIN_TIME) / SLOW_DOWN_TIME;
-            spinSpeed = 40 * (1 - slowdown * 0.8); // Плавно уменьшаем скорость до 8
-        } else {
-            // Останавливаем
-            clearInterval(spinInterval);
-            spinInterval = null;
-            stopRoulette();
-            return;
-        }
-        
-        spinPosition += spinSpeed;
-        
-        // Если достигли конца, начинаем сначала
-        if (spinPosition >= track.scrollWidth - track.parentElement.offsetWidth) {
-            spinPosition = 0;
-        }
-        
-        track.style.transform = `translateX(-${spinPosition}px)`;
-    }, 16);
-    
-    console.log('Animation started');
+
+    const ITEM_WIDTH = 120;  // min-width из CSS
+    const ITEM_GAP = 10;     // gap из CSS (.roulette-track)
+    const ITEM_STEP = ITEM_WIDTH + ITEM_GAP; // 130px на предмет
+    const TRACK_PADDING = 20; // padding-left у .roulette-track
+
+    // Дедуплицируем массив предметов по id (сервер может присылать дубликаты)
+    const seenIds = new Set();
+    const itemsList = items.filter(item => {
+        if (seenIds.has(String(item.id))) return false;
+        seenIds.add(String(item.id));
+        return true;
+    });
+
+    const containerWidth = track.parentElement.offsetWidth;
+
+    // Считаем, сколько полных циклов нужно прокрутить перед выигрышным предметом
+    const MIN_SCROLL = 3000; // минимальное расстояние прокрутки в px
+    const MIN_CYCLES = 5;   // минимум 5 полных оборотов для эффектного вращения
+    const fullCycles = Math.max(MIN_CYCLES, Math.ceil(MIN_SCROLL / (itemsList.length * ITEM_STEP)));
+
+    // Позиция выигрышного предмета в массиве
+    const wonIndex = itemsList.findIndex(item => String(item.id) === String(wonItem.id));
+    if (wonIndex === -1) {
+        console.warn('Won item not found in itemsList, appending it', wonItem.id);
+        itemsList.push(wonItem);
+    }
+    const winOffset = wonIndex >= 0 ? wonIndex : itemsList.length - 1;
+
+    // Индекс выигрышного предмета в треке
+    const winTrackIndex = fullCycles * itemsList.length + winOffset;
+
+    // Строим HTML трека
+    const totalTrackItems = winTrackIndex + itemsList.length * 2;
+    let itemsHtml = '';
+    for (let i = 0; i < totalTrackItems; i++) {
+        const item = itemsList[i % itemsList.length];
+        const isWinner = (i === winTrackIndex);
+        itemsHtml += `
+            <div class="roulette-item${isWinner ? ' roulette-winner-target' : ''}" data-item-id="${item.id}" data-item-price="${item.price}">
+                ${item.image ? `<img src="${getImageUrl(item.image)}" alt="${item.name}">` : '<i class="fas fa-gift"></i>'}
+                <span>${item.name}</span>
+            </div>
+        `;
+    }
+    track.innerHTML = itemsHtml;
+
+    // Сбрасываем позицию без анимации
+    track.style.transition = 'none';
+    track.style.transform = 'translateX(0)';
+
+    // Принудительный reflow, чтобы transition: none применилось до смены transform
+    track.getBoundingClientRect();
+
+    // Небольшой случайный сдвиг в пределах ±25% ширины предмета — чтобы не останавливалось
+    // идеально по центру каждый раз, но выигрышный предмет оставался под стрелкой
+    const randomOffset = Math.floor((Math.random() - 0.5) * ITEM_STEP * 0.5);
+
+    // Целевой сдвиг: центр выигрышного предмета совпадает с центром контейнера (стрелкой)
+    const targetX = TRACK_PADDING + winTrackIndex * ITEM_STEP + ITEM_WIDTH / 2 - containerWidth / 2 + randomOffset;
+
+    console.log('winTrackIndex:', winTrackIndex, 'targetX:', targetX, 'wonItem.id:', wonItem.id);
+
+    // Анимируем CSS-переходом: быстрый старт, плавное замедление до нуля
+    const totalDuration = SPIN_TIME + SLOW_DOWN_TIME; // 5000ms
+    track.style.transition = `transform ${totalDuration}ms cubic-bezier(0.08, 0.82, 0.17, 1)`;
+    track.style.transform = `translateX(-${Math.max(0, targetX)}px)`;
+
+    // После завершения анимации останавливаем рулетку
+    setTimeout(() => stopRoulette(), totalDuration);
+
+    console.log('Animation started (CSS transition)');
 }
 
 function stopRoulette() {
-    console.log('Stopping roulette automatically');
-    
+    console.log('Stopping roulette');
+
     if (!isSpinning || !wonItem) {
         console.log('Cannot stop: isSpinning=', isSpinning, 'wonItem=', wonItem);
         return;
     }
-    
+
     isSpinning = false;
-    
+
     const track = document.getElementById('roulette-track');
-    const items = document.querySelectorAll('.roulette-item');
-    
-    if (!track || !items.length) {
-        console.error('Track or items not found');
-        return;
+    if (!track) return;
+
+    // Фиксируем трек в текущей позиции (убираем transition, чтобы не было отката)
+    const computedStyle = window.getComputedStyle(track);
+    track.style.transition = 'none';
+    track.style.transform = computedStyle.transform;
+
+    // Подсвечиваем выигрышный предмет (помечен заранее при построении трека)
+    track.querySelectorAll('.roulette-item').forEach(el => el.classList.remove('winning'));
+    const winnerEl = track.querySelector('.roulette-winner-target');
+    if (winnerEl) {
+        winnerEl.classList.add('winning');
     }
-    
-    // Находим текущую позицию
-    const currentTransform = track.style.transform;
-    let currentPosition = 0;
-    if (currentTransform) {
-        const match = currentTransform.match(/translateX\(-([0-9.]+)px\)/);
-        if (match) {
-            currentPosition = parseFloat(match[1]);
-        }
-    }
-    
-    const containerWidth = track.parentElement.offsetWidth;
-    const itemWidth = 108; // ширина + gap
-    
-    // Рассчитываем, какой предмет сейчас по центру под указателем
-    const centerPosition = currentPosition + (containerWidth / 2);
-    const currentIndex = Math.floor(centerPosition / itemWidth);
-    
-    console.log('Current position:', currentPosition);
-    console.log('Center position:', centerPosition);
-    console.log('Current index:', currentIndex);
-    
-    // Получаем ID предмета, на котором остановились
-    let actualItemId = null;
-    if (items[currentIndex]) {
-        actualItemId = items[currentIndex].dataset.itemId;
-        console.log('Actual item at stop:', actualItemId, 'Expected item:', wonItem.id);
-    }
-    
-    // Если предмет не совпадает с выигрышным, корректируем позицию
-    if (actualItemId != wonItem.id) {
-        console.log('Items do not match, correcting position...');
-        
-        // Ищем ближайший выигрышный предмет
-        let targetIndex = -1;
-        let minDistance = Infinity;
-        
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].dataset.itemId == wonItem.id) {
-                const itemCenter = i * itemWidth + (itemWidth / 2);
-                const distance = Math.abs(itemCenter - centerPosition);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    targetIndex = i;
-                }
-            }
-        }
-        
-        if (targetIndex !== -1) {
-            console.log('Correcting to index:', targetIndex);
-            
-            // Рассчитываем целевую позицию
-            const targetPosition = targetIndex * itemWidth - (containerWidth / 2) + (itemWidth / 2);
-            
-            track.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
-            track.style.transform = `translateX(-${targetPosition}px)`;
-            
-            // Обновляем индекс для подсветки
-            setTimeout(() => {
-                items.forEach(item => item.classList.remove('winning'));
-                if (items[targetIndex]) {
-                    items[targetIndex].classList.add('winning');
-                }
-                
-                // Показываем результат
-                setTimeout(() => {
-                    showResult(wonItem);
-                }, 500);
-            }, 300);
-        } else {
-            // Если не нашли, просто подсвечиваем текущий
-            items.forEach(item => item.classList.remove('winning'));
-            if (items[currentIndex]) {
-                items[currentIndex].classList.add('winning');
-            }
-            
-            setTimeout(() => {
-                showResult(wonItem);
-            }, 500);
-        }
-    } else {
-        // Предметы совпадают - отлично!
-        items.forEach(item => item.classList.remove('winning'));
-        if (items[currentIndex]) {
-            items[currentIndex].classList.add('winning');
-        }
-        
-        setTimeout(() => {
-            showResult(wonItem);
-        }, 500);
-    }
-    
+
+    // Показываем результат
+    setTimeout(() => {
+        showResult(wonItem);
+    }, 500);
+
     // Восстанавливаем кнопку
     setTimeout(() => {
         const btn = document.querySelector('.case-open-btn-large');
