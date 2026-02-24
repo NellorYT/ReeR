@@ -1,6 +1,11 @@
 <?php
-require_once 'includes/config.php';
-require_once 'includes/db.php';
+require_once __DIR__ . '/includes/functions.php';
+startSession();
+// Доступ только для администраторов
+if (!isAdmin()) {
+    http_response_code(403);
+    exit('Доступ запрещён. Этот диагностический скрипт доступен только администраторам.');
+}
 
 echo "<h1>Проверка соединения с базой данных</h1>";
 

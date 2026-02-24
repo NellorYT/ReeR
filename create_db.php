@@ -1,5 +1,10 @@
 <?php
 // create_db.php - создание базы данных
+// Запуск разрешён только из командной строки (CLI)
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    exit('Этот скрипт может быть запущен только из командной строки (CLI).');
+}
 $host = 'localhost';
 $user = 'root';
 $pass = '';
